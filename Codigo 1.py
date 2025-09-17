@@ -8,7 +8,7 @@ import time
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Electrolizador PEM",
+    page_title="Gemelo Digital de Electrolizador PEM",
     layout="wide",
     initial_sidebar_state="expanded"
 )
