@@ -13,6 +13,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+#Excel para lectura del flujo de hidrogeno
+@st.cache_data
+def cargar_datos_excel():
+    try:
+        # Leer el archivo Excel
+        df = pd.read_excel("Datosvoltaje.xlsx")
+        return df
+    except Exception as e:
+        st.error(f"Error al cargar el archivo Excel: {e}")
+        return None
+
+# Cargar datos
+df_datos = cargar_datos_excel()
+
 # CSS personalizado
 st.markdown("""
 <style>
@@ -56,6 +70,12 @@ st.markdown("""
         padding: 1rem;
         text-align: center;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+            
+                /* Centrar imagen */
+    .stImage {
+        display: flex;
+        justify-content: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -131,13 +151,6 @@ flujo_h2o = st.sidebar.number_input(
     step=0.1
 )
 
-
-eficiencia = st.sidebar.selectbox(
-    "Eficiencia (%)", 
-    options=[75, 80, 85, 90, 95], 
-    index=2
-)
-
 area_electrodo = st.sidebar.number_input(
     "Área del electrodo (cm²)", 
     min_value=10, 
@@ -146,18 +159,41 @@ area_electrodo = st.sidebar.number_input(
     step=10
 )
 
+#Función para obtener el flujo de H2 del Excel
+def obtener_flujo_h2_excel(voltaje, corriente, df):
+    if df is None:
+        return None
+    
+    try:
+        # Buscar todas las filas (no solo una)
+        filas = df[(df['Voltaje'] == voltaje) & (df['Corriente'] == corriente)]
+        
+        if not filas.empty:
+            # Calcular el promedio de todas las mediciones
+            tasa_promedio_ml_min = filas['Tasa de producción H2(ml/min)'].mean()
+            # Convertir de ml/min a L/min
+            tasa_l_min = tasa_promedio_ml_min / 1000
+            return tasa_l_min
+        else:
+            return None
+    except Exception as e:
+        st.error(f"Error al buscar datos: {e}")
+        st.error(f"Columnas disponibles en el Excel: {df.columns.tolist()}")
+        return None
+    
 # Cálculos del electrolizador
-def calcular_produccion(voltaje, corriente, eficiencia, temperatura, presion):
-    # Constantes
-    F = 96485  # Constante de Faraday (C/mol)
-    R = 8.314  # Constante de los gases (J/mol·K)
+def calcular_produccion(voltaje, corriente, temperatura, presion, df_datos):  # ← Quitó 'eficiencia', agregó 'df_datos'
+    F = 96485
     
-    # Cálculo teórico de producción de hidrógeno (mol/s)
-    # H2O → H2 + 1/2 O2 (2 electrones por molécula de H2)
-    produccion_h2_mol_s = (corriente * eficiencia / 100) / (2 * F)
-    
-    # Conversión a L/min (condiciones estándar)
-    produccion_h2_l_min = produccion_h2_mol_s * 22.4 * 60 / 1000
+    produccion_h2_l_min = obtener_flujo_h2_excel(voltaje, corriente, df_datos)  # ← Ahora usa 'df_datos'
+
+    # Si no hay datos en Excel, calcular teóricamente
+    if produccion_h2_l_min is None:
+        # Calcular con eficiencia estimada del 85%
+        eficiencia_estimada = 85
+        produccion_h2_mol_s = (corriente * eficiencia_estimada / 100) / (2 * F)
+        produccion_h2_l_min = produccion_h2_mol_s * 22.4 * 60 / 1000
+        st.warning("Usando cálculo teórico - No se encontraron datos en Excel")
     
     # Producción de oxígeno (la mitad que el hidrógeno)
     produccion_o2_l_min = produccion_h2_l_min / 2
@@ -170,7 +206,26 @@ def calcular_produccion(voltaje, corriente, eficiencia, temperatura, presion):
         consumo_especifico = (potencia / 1000) / (produccion_h2_l_min / 1000 * 60)
     else:
         consumo_especifico = 0
+
+  # Calcular eficiencia del sistema
+    # Voltaje termodinámico teórico para la electrólisis del agua: 1.23V
+    voltaje_teorico = 1.23
     
+    # Eficiencia de voltaje = (Voltaje_teórico / Voltaje_aplicado) * 100
+    eficiencia_voltaje = (voltaje_teorico / voltaje) * 100
+    # Eficiencia faradaica (basada en producción real vs teórica)
+    produccion_teorica_mol_s = corriente / (2 * F)
+    produccion_teorica_l_min = produccion_teorica_mol_s * 22.4 * 60 / 1000
+
+    if produccion_teorica_l_min > 0:
+        eficiencia_faradaica = (produccion_h2_l_min / produccion_teorica_l_min) * 100
+    else:
+        eficiencia_faradaica = 0
+    
+# Eficiencia global
+    eficiencia_faradaica = min(eficiencia_faradaica, 100)
+    eficiencia = eficiencia_voltaje * (eficiencia_faradaica / 100)
+
     return {
         'h2_production': produccion_h2_l_min,
         'o2_production': produccion_o2_l_min,
@@ -181,7 +236,7 @@ def calcular_produccion(voltaje, corriente, eficiencia, temperatura, presion):
 
 
 # Realizar cálculos
-resultados = calcular_produccion(voltaje, corriente, eficiencia, temperatura, presion)
+resultados = calcular_produccion(voltaje, corriente, temperatura, presion, df_datos)
 
 # Obtener la potencia calculada
 potencia = round(resultados['power'], 2)
@@ -280,7 +335,9 @@ with col2:
 
     # --- Mostrar imagen debajo de los botones ---
     
-    st.image("fig.png", caption="Esquema del electrolizador PEM", width=300)
+    col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
+with col_img2:
+    st.image("fig.png", caption="Esquema del electrolizador PEM", use_container_width=True)
 
     # --- Estado actual ---
     if st.session_state.estado == "running":
@@ -310,8 +367,8 @@ with col3:
     
     st.metric(
         "Producción H₂", 
-        f"{resultados['h2_production']:.2f} L/min",
-        delta=f"{resultados['h2_production']*60:.1f} L/h"
+        f"{resultados['h2_production']:.4f} L/min",
+        delta=f"{resultados['h2_production']*60:.3f} L/h"
     )
     
     st.metric(
@@ -319,7 +376,19 @@ with col3:
         f"{resultados['o2_production']:.2f} L/min",
         delta=f"{resultados['o2_production']*60:.1f} L/h"
     )
+     
+    st.metric(
+        "Eficiencia del Sistema",
+        f"{resultados['efficiency']:.1f} %"
+    )
     
+    st.metric(
+        "Consumo Específico",
+        f"{resultados['specific_consumption']:.2f} kWh/Nm³"
+    )
+    
+
+
     # Indicadores de estado
     #st.markdown("Estado del Sistema")
     
@@ -329,12 +398,14 @@ with col3:
         #st.error("Sistema Detenido")
     
     # Eficiencia
-    if eficiencia >= 85:
-        st.success(f"✅ Eficiencia Óptima: {eficiencia}%")
-    elif eficiencia >= 75:
-        st.warning(f"⚠️ Eficiencia Moderada: {eficiencia}%")
+    # Indicador visual de eficiencia
+    eficiencia = resultados['efficiency']
+    if eficiencia >= 70:
+        st.success(f"Eficiencia Óptima")
+    elif eficiencia >= 50:
+        st.warning(f"Eficiencia Moderada")
     else:
-        st.error(f"❌ Eficiencia Baja: {eficiencia}%")
+        st.error(f"Eficiencia Baja")
 
 
 # Footer
@@ -344,6 +415,7 @@ st.markdown("""
     <p>🔬 <strong>Gemelo digital de un electrolizador PEM</strong> | Desarrollado para análisis de electrólisis</p>
     <p><em>Hecho por:</em></p>
     <p><em>Isabela Quintero</em></p>
-    <p><em>Johana Andrea Murillo</em></p>
+    <p><em>Jo
+hana Andrea Murillo</em></p>
 </div>
 """, unsafe_allow_html=True)
