@@ -1,8 +1,6 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from plotly.subplots import make_subplots
-import time
 
 # Configuración de la página
 st.set_page_config(
