@@ -344,14 +344,14 @@ with col_img2:
         st.warning("Proceso detenido.")
 
 
-    # Ecuación química
-    st.markdown("""
-    <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; text-align: center;">
-        <h4>⚗️ Reacción Química</h4>
-        <p><strong>2H₂O → 2H₂ + O₂</strong></p>
-        <p><em>Electrólisis del agua usando membrana de intercambio protónico</em></p>
-    </div>
-    """, unsafe_allow_html=True)
+# Ecuación química
+st.markdown("""
+<div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; text-align: center;">
+    <h4>⚗️ Reacción Química</h4>
+    <p><strong>2H₂O → 2H₂ + O₂</strong></p>
+    <p><em>Electrólisis del agua usando membrana de intercambio protónico</em></p>
+</div>
+""", unsafe_allow_html=True)
 
 # Columna derecha - Salidas y resultados
 with col3:
