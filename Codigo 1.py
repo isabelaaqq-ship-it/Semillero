@@ -272,11 +272,7 @@ with col1:
     st.metric("Presión", f"{presion} hPa")
     st.metric("Potencia", f"{potencia} kW")
     st.metric("Flujo H₂O", f"{flujo_h2o} L/min")
- 
-
-    
-
-
+    st.sidebar.image("UCO.jpg", use_container_width=True)
 
 
     # Animación de flujo (burbujas)
