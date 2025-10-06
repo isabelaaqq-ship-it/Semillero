@@ -93,14 +93,14 @@ opciones = {
 voltaje = st.sidebar.selectbox( #st.sidebar.select_slider- para hacerlo en barra que no se mueva
     "Voltaje (V)",
     options=list(opciones.keys()),
-    format_func=lambda x: f"{x} V",
+    format_func=lambda x: f"{x}",
     help="Voltaje aplicado al electrolizador"
 )
 
 corriente = st.sidebar.selectbox(
     "Corriente (A)",
     options=opciones[voltaje],
-    format_func=lambda x: f"{x} A",
+    format_func=lambda x: f"{x}",
     help="Corriente eléctrica del proceso"
 )
 
