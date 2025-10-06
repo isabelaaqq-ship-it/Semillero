@@ -205,7 +205,7 @@ def calcular_produccion(voltaje, corriente, temperatura, presion, df_datos):  # 
 
   # Calcular eficiencia del sistema
     # Voltaje termodinámico teórico para la electrólisis del agua: 1.23V
-    voltaje_teorico = 1.23
+    voltaje_teorico = voltaje
     
     # Eficiencia de voltaje = (Voltaje_teórico / Voltaje_aplicado) * 100
     eficiencia_voltaje = (voltaje_teorico / voltaje) * 100
