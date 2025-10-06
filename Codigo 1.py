@@ -77,7 +77,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Layout principal
-col1, col2, col3 = st.columns([1, 1.5, 1])
+col1, col2, col3 = st.columns([0.7, 1.5, 1])
 
 # Sidebar - Parámetros de entrada
 st.sidebar.markdown("Parámetros de Control")
@@ -261,12 +261,12 @@ st.markdown("""
 # Columna izquierda - Parámetros
 with col1:
     st.markdown("""
-    <div class="parameter-box">
-        <h3>Parámetros Actuales</h3>
+    <div class="parameter-box" style="text-align: center;">
+        <h3>Entradas</h3>
     </div>
     """, unsafe_allow_html=True)
     
-    st.metric("Voltaje", f"{voltaje} V")
+    st.metric("Voltaje", f"{voltaje} V", width = "content")
     st.metric("Corriente", f"{corriente} A")
     st.metric("Temperatura", f"{temperatura} °C")
     st.metric("Presión", f"{presion} hPa")
@@ -331,7 +331,7 @@ with col2:
 
     # --- Mostrar imagen debajo de los botones ---
     
-    col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
+    col_img1, col_img2, col_img3 = st.columns([0.5, 2, 0.5])
 with col_img2:
     st.image("fig.png", caption="Esquema del electrolizador PEM", use_container_width=True)
 
@@ -344,20 +344,20 @@ with col_img2:
         st.warning("Proceso detenido.")
 
 
-    # Ecuación química
-    st.markdown("""
-    <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; text-align: center;">
-        <h4>⚗️ Reacción Química</h4>
-        <p><strong>2H₂O → 2H₂ + O₂</strong></p>
-        <p><em>Electrólisis del agua usando membrana de intercambio protónico</em></p>
-    </div>
-    """, unsafe_allow_html=True)
+# Ecuación química
+st.markdown("""
+<div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; text-align: center;">
+    <h4>⚗️ Reacción Química</h4>
+    <p><strong>2H₂O → 2H₂ + O₂</strong></p>
+    <p><em>Electrólisis del agua usando membrana de intercambio protónico</em></p>
+</div>
+""", unsafe_allow_html=True)
 
 # Columna derecha - Salidas y resultados
 with col3:
     st.markdown("""
-    <div class="output-box">
-        <h3>Salidas del Sistema</h3>
+    <div class="parameter-box" style="text-align: center;">
+        <h3>Salidas</h3>
     </div>
     """, unsafe_allow_html=True)
     
