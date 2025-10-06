@@ -79,6 +79,8 @@ st.markdown("""
 # Layout principal
 col1, col2, col3 = st.columns([0.7, 1.5, 1])
 
+
+st.sidebar.image("UCO.png", use_container_width=True)
 # Sidebar - Parámetros de entrada
 st.sidebar.markdown("Parámetros de Control")
 
@@ -266,7 +268,7 @@ with col1:
     </div>
     """, unsafe_allow_html=True)
     
-    st.sidebar.image("UCO.png", use_container_width=True)
+    
     st.metric("Voltaje", f"{voltaje} V", width = "content")
     st.metric("Corriente", f"{corriente} A")
     st.metric("Temperatura", f"{temperatura} °C")
