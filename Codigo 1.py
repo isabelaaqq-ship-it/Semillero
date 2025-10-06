@@ -266,13 +266,14 @@ with col1:
     </div>
     """, unsafe_allow_html=True)
     
+    st.sidebar.image("UCO.png", use_container_width=True)
     st.metric("Voltaje", f"{voltaje} V", width = "content")
     st.metric("Corriente", f"{corriente} A")
     st.metric("Temperatura", f"{temperatura} °C")
     st.metric("Presión", f"{presion} hPa")
     st.metric("Potencia", f"{potencia} kW")
     st.metric("Flujo H₂O", f"{flujo_h2o} L/min")
-    st.sidebar.image("UCO.jpg", use_container_width=True)
+    
 
 
     # Animación de flujo (burbujas)
