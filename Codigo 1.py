@@ -410,8 +410,8 @@ st.markdown("""
 <div style="text-align: center; color: #666; padding: 1rem;">
     <p>🔬 <strong>Gemelo digital de un electrolizador PEM</strong> | Desarrollado para análisis de electrólisis</p>
     <p><em>Hecho por:</em></p>
-    <p><em>Isabela Quintero</em></p>
-    <p><em>Jo
-hana Andrea Murillo</em></p>
+    <p><em>Universidad Católica de Oriente</em></p>
+    <p><em>Isabela Quintero Arboleda</em></p>
+    <p><em>Johana Andrea Murillo Vergara</em></p>
 </div>
 """, unsafe_allow_html=True)
