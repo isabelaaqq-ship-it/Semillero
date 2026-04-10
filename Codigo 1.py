@@ -86,7 +86,7 @@ st.sidebar.markdown("Parámetros de Control")
 
 # --- Diccionario que asocia voltajes con sus corrientes disponibles
 opciones = {
-    5.3: [1.5, 2.05, 2.6],
+    5.5: [1.5, 2.05, 2.6],
     5.75: [3.5, 4.0, 4.5],
     6.2: [5.4, 6.0, 6.6]  
 }
