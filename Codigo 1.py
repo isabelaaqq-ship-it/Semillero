@@ -158,11 +158,11 @@ def calcular_produccion(modelo, voltaje, corriente, n_celdas):
             - 52.6 * V * A
             + 129.11 * V**2
             + 6.69 * A**2
-        ) / 1000
+        ) 
 
     elif modelo == "Ley de Faraday":
         h2 = (corriente * n_celdas) / (2 * F)
-        h2 = h2 * 22.4 * 60 / 1000
+        h2 = h2 * 22.4 * 60 
     o2 = h2 / 2
 
     if modelo == "Regresión lineal":
@@ -221,7 +221,7 @@ else:
     )
     
 # Columna izquierda - Parámetros
-    with col1:
+with col1:
         st.markdown("""
         <div class="parameter-box" style="text-align: center;">
             <h3>Entradas</h3>
@@ -244,7 +244,7 @@ else:
 
     # Animación de flujo (burbujas)
 # Inicializar estado si no existe
-    with col2:
+with col2:
         # --- Título centrado ---
         st.markdown("""
         <div class="parameter-box" style="text-align: center;">
@@ -295,7 +295,7 @@ else:
         # --- Mostrar imagen debajo de los botones ---
         
         col_img1, col_img2, col_img3 = st.columns([0.5, 2, 0.5])
-    with col_img2:
+with col_img2:
         st.image("fig.png", caption="Esquema del electrolizador PEM", use_container_width=True)
 
         # --- Estado actual ---
