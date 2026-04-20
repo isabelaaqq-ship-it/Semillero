@@ -1,7 +1,7 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
+from statistics import LinearRegression
 
 st.set_page_config(
     page_title="Electrolizador PEM",
@@ -9,7 +9,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── ESTADO ────────────────────────────────────────────────────────────────────
+# ── ESTADO 
 if "modelo_seleccionado" not in st.session_state:
     st.session_state.modelo_seleccionado = None
 
