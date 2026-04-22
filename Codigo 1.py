@@ -1,7 +1,7 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from statistics import LinearRegression
+from sklearn.linear_model import LinearRegression
 
 st.set_page_config(
     page_title="Electrolizador PEM",
