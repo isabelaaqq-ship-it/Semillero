@@ -343,7 +343,7 @@ def mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far):
 # Sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 try:
-    st.sidebar.image("UCO.png", width=200)
+    st.sidebar.image("UCO.png", width=200, use_column_width=True)
 except Exception:
     pass
 
@@ -366,7 +366,7 @@ for i, nombre in enumerate(pasos_nombres):
 st.sidebar.divider()
 st.sidebar.progress(st.session_state.paso_actual / len(pasos_nombres))
 
-st.title("⚡ Gemelo digital electrolizador PEM")
+st.title("Gemelo digital electrolizador PEM")
 st.divider()
 
 
