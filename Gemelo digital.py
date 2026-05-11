@@ -120,7 +120,7 @@ def _modelo_superficie(V_arr, I_arr, tasa_arr):
 
 def _nf_faraday(I_arr, tasa_arr, n_celdas, T, P):
     R, F = 0.08314, 96485
-    Vm = ((R * T) / P)* 1000
+    Vm = ((R * T) / P) * 1000 #mL/min
     tasa_teo  = n_celdas * (I_arr / (2 * F)) * Vm * 60   # mL/min
     tasa_real = tasa_arr                        # mL
     nf_arr = np.where(tasa_teo > 0, tasa_real / tasa_teo, 0.0)
@@ -146,10 +146,11 @@ def calcular_produccion(modelo, data_limpia, n_celdas, T, P):
     ef_volt   = min((V_TN / V_mean) * 100, 100) if V_mean > 0 else 0.0
     coefs     = {}
 
+    print(f"Calculando producción con modelo: {modelo}")
     if modelo == "Regresión lineal":
         b0, b1 = _reg_lineal(I, tasa)
         pred   = b0 + b1 * I
-        h2     = max(pred.mean() / 1000, 0.0)
+        h2     = max(pred.mean() , 0.0)
         o2     = h2 / 2
         err, acc, err_m, acc_m = _accuracy(pred, tasa)
         ef_far = acc_m * 100
@@ -159,22 +160,25 @@ def calcular_produccion(modelo, data_limpia, n_celdas, T, P):
     elif modelo == "Modelo de superficie":
         beta, X = _modelo_superficie(V, I, tasa)
         pred    = X @ beta
-        h2      = max(pred.mean() / 1000, 0.0)
+        h2      = max(pred.mean() , 0.0)
         o2      = h2 / 2
         err, acc, err_m, acc_m = _accuracy(pred, tasa)
         ef_far  = acc_m * 100
         coefs   = {"β": beta, "X": X, "pred": pred,
                    "err": err, "acc": acc, "err_m": err_m, "acc_m": acc_m}
 
+    
     elif modelo == "Ley de Faraday":
         nf, nf_arr, tasa_teo, tasa_real, Vm = _nf_faraday(I, tasa, n_celdas, T, P)
-        ef_far  = nf * 100
-        h2_arr  = n_celdas * nf * (I / (2 * F)) * Vm * 60
-        o2_arr  = n_celdas * nf * (I / (4 * F)) * Vm * 60
-        h2, o2  = float(h2_arr.mean()), float(o2_arr.mean())
-        coefs   = {"nf": nf, "nf_arr": nf_arr, "Vm": Vm,
-                   "tasa_teo": tasa_teo, "tasa_real": tasa_real,
-                   "h2_arr": h2_arr, "o2_arr": o2_arr}
+        h2_arr = n_celdas * nf_arr * (I / (2 * F)) * Vm * 60 * 1000   # mL/min
+        o2_arr = n_celdas * nf_arr * (I / (4 * F)) * Vm * 60 * 1000   # mL/min
+        err, acc, err_m, acc_m = _accuracy(h2_arr, tasa_real)
+        ef_far = acc_m * 100          # eficiencia del modelo (accuracy)
+        coefs  = {"nf": nf, "nf_arr": nf_arr, "Vm": Vm,
+                "tasa_teo": tasa_teo, "tasa_real": tasa_real,
+                "h2_arr": h2_arr, "o2_arr": o2_arr,
+                "ef_nf_pct": nf_arr * 100 ,    # ← eficiencia faradaica en %
+                "ef_modelo": ef_far}       # ← eficiencia del modelo
     else:
         h2 = o2 = ef_far = 0.0
 
@@ -186,10 +190,10 @@ def calcular_produccion(modelo, data_limpia, n_celdas, T, P):
 def h2_por_punto(modelo, I_val, V_val, coefs, n_celdas, T, P):
     F = 96485
     if modelo == "Regresión lineal":
-        return max((coefs["β₀"] + coefs["β₁"] * I_val) / 1000, 0.0)
+        return max((coefs["β₀"] + coefs["β₁"] * I_val) , 0.0)
     elif modelo == "Modelo de superficie":
         x = np.array([1, V_val, I_val, V_val * I_val, V_val**2, I_val**2])
-        return max(float(x @ coefs["β"]) / 1000, 0.0)
+        return max(float(x @ coefs["β"]) , 0.0)
     elif modelo == "Ley de Faraday":
         nf = coefs.get("nf", 0.0)
         Vm = coefs.get("Vm", 0.0)
@@ -290,15 +294,24 @@ def mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far):
     elif modelo_actual == "Ley de Faraday":
         nf = coefs["nf"]
         Vm = coefs["Vm"]
-        F = 96485
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Eficiencia faradaica", f"{_fmt(nf)}")
-        c2.metric("Volumen molar del gas (L/mol)", f"{_fmt(Vm)}")
-        c3.metric("Número de electrones transferidos", f"{_fmt(n)}")
-        c4.metric("Constante de Faraday (C/mol)", f"{F}")
+        # Parámetro ajustado
+        st.markdown("**Parámetro ajustado a los datos:**")
+        c1, c2 = st.columns(2)
+        c1.metric("Eficiencia faradaica η_F", f"{coefs['ef_nf_pct']:.2f} %")
+        c2.metric("Volumen molar del gas, Vm (L/mol)", f"{_fmt(Vm)}")
+        # Constantes fijas del modelo
+        st.markdown("**Constantes físicas fijas:**")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Constante de Faraday, F (C/mol)", "96,485")
+        k2.metric("Constante de gas ideal, R (L·atm/mol·K)", "0.08314")
+        k3.metric("Electrones por mol H₂ (n)", "2")
+        k4.metric("Electrones por mol O₂ (n)", "4")
 
     # ── Eficiencia + mensaje contextual ──────────────────────────────────────
     st.markdown('<div class="seccion-titulo">Eficiencia del modelo de producción</div>', unsafe_allow_html=True)
+
+    if modelo_actual == "Ley de Faraday":
+        ef_far = coefs["ef_modelo"]
 
     col_ef1, col_ef2 = st.columns([1, 2])
     col_ef1.metric("Eficiencia del modelo (%)", f"{_fmt(ef_far)} %")
@@ -494,16 +507,22 @@ elif st.session_state.paso_actual == 3:
         index=idx_previo,
     )
 
+    
     # Guardar selección inmediatamente en session_state
     if modelo != "-- Seleccionar --":
         st.session_state.modelo_seleccionado = modelo
+        print(f"Modelo seleccionado 1")
     else:
         st.session_state.modelo_seleccionado = None
+        print(f"Modelo seleccionado 2")
 
     if not st.session_state.modelo_seleccionado:
         st.info("👆 Selecciona un modelo para ver los resultados.")
+        print(f"Modelo seleccionado 3")
+
 
     else:
+        print(f"Modelo seleccionado def")
         modelo_actual = st.session_state.modelo_seleccionado
         data_limpia   = st.session_state.data.dropna()
         data_limpia   = data_limpia[(data_limpia["corriente"] >= 0) & (data_limpia["voltaje"] >= 0)]
@@ -648,7 +667,7 @@ elif st.session_state.paso_actual == 3:
             # 1. Producción H₂ vs Corriente + banda de ±5 %
             if tipo_graf == "Producción H₂ vs Corriente":
                 I_lin   = np.linspace(I_s.min() * 0.9, I_s.max() * 1.1, 200)
-                h2_lin  = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60 * 1000  # mL/min
+                h2_lin  = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60   # mL/min
                 delta   = 0.05 * h2_lin
 
                 fig_f1 = go.Figure()
@@ -706,8 +725,8 @@ elif st.session_state.paso_actual == 3:
             # 3. H₂ y O₂ vs Corriente (doble eje)
             elif tipo_graf == "Producción H₂ y O₂ vs Corriente":
                 I_lin   = np.linspace(I_s.min() * 0.9, I_s.max() * 1.1, 200)
-                h2_lin  = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60 * 1000
-                o2_lin  = n_cel * nf_mean * (I_lin / (4 * F_const)) * Vm * 60 * 1000
+                h2_lin  = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60 
+                o2_lin  = n_cel * nf_mean * (I_lin / (4 * F_const)) * Vm * 60 
 
                 fig_f4 = make_subplots(specs=[[{"secondary_y": True}]])
                 fig_f4.add_trace(go.Scatter(
