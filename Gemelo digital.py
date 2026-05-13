@@ -624,7 +624,7 @@ elif st.session_state.paso_actual == 3:
             I_grid = np.linspace(I_arr.min(), I_arr.max(), 40)
             V_grid = np.linspace(V_arr.min(), V_arr.max(), 40)
             II, VV = np.meshgrid(I_grid, V_grid)
-            ZZ = (beta[0] + beta[1]*VV + beta[2]*II + beta[3]*VV*II + beta[4]*VV**2 + beta[5]*II**2)
+            ZZ = beta[0] + beta[1]*VV + beta[2]*II + beta[3]VV*II + beta[4]*VV2 + beta[5]*II*2
 
             fig3d = go.Figure()
             fig3d.add_trace(go.Surface(
