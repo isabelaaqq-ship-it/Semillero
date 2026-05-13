@@ -349,8 +349,7 @@ def mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far):
         ef_modelo = coefs["ef_modelo"]
         ef_far_global = coefs["ef_far_global"]
         col_ef1, col_ef2, col_ef3 = st.columns(3)
-        col_ef1.metric("Eficiencia faradaica (%)", f"{_fmt(ef_far_global)} %")
-        col_ef2.metric("Eficiencia del modelo (%)", f"{_fmt(ef_modelo)} %")
+        col_ef1.metric("Eficiencia del modelo (%)", f"{_fmt(ef_modelo)} %")
         ef_mostrar = ef_modelo
     else:
         col_ef1, col_ef2 = st.columns([1, 2])
