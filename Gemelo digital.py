@@ -37,11 +37,9 @@ st.markdown("""
         color: #14532d;
         font-size: 1.05rem;
     }
-    /* Mensajes de éxito en verde sin negrilla extra */
     .stAlert[data-baseweb="notification"] p {
         font-weight: normal;
     }
-    /* Hacer que info aparezca como success (verde) para R² */
     .r2-verde {
         background-color: #f0fdf4;
         border: 1px solid #86efac;
@@ -51,7 +49,6 @@ st.markdown("""
         font-size: 0.95rem;
         margin-top: 0.5rem;
     }
-    /* Tarjeta de eficiencia */
     .ef-card {
         border-radius: 0.75rem;
         padding: 1rem 1.25rem;
@@ -79,18 +76,15 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-def ingreso_datos():
-    if len(data.dropna()) < 15:
-        st.warning("Ingresa al menos 15 mediciones válidas para continuar.")
-    else:
-        st.session_state.celdas = celdas
-        st.session_state.temperatura = temperatura
-        st.session_state.presion = presion
-        st.session_state.data = data.copy()
-        st.session_state.paso_actual += 1
 
-def siguiente_paso():  st.session_state.paso_actual += 1
-def paso_anterior():   st.session_state.paso_actual -= 1
+def siguiente_paso():
+    st.session_state.paso_actual += 1
+
+
+def paso_anterior():
+    st.session_state.paso_actual -= 1
+
+
 def reiniciar():
     st.session_state.clear()
     st.session_state.paso_actual = 1
@@ -119,10 +113,21 @@ def _modelo_superficie(V_arr, I_arr, tasa_arr):
 
 
 def _nf_faraday(I_arr, tasa_arr, n_celdas, T, P):
+    """
+    Calcula la eficiencia faradaica comparando la tasa real (mL/min)
+    con la tasa teórica (mL/min).
+
+    Unidades:
+        R  = 0.08314  L·atm / (mol·K)
+        Vm = R·T/P    L/mol   (volumen molar del gas a T,P)
+        tasa_teo [mL/min] = n_celdas · (I/2F) [mol/s] · Vm [L/mol] · 60 [s/min] · 1000 [mL/L]
+        tasa_real [mL/min] = tasa_arr  (dato experimental)
+    """
     R, F = 0.08314, 96485
-    Vm = ((R * T) / P) * 1000 #mL/min
-    tasa_teo  = n_celdas * (I_arr / (2 * F)) * Vm * 60   # mL/min
-    tasa_real = tasa_arr                        # mL
+    Vm = (R * T) / P                            # L/mol  ← sin ×1000
+    tasa_teo = n_celdas * (I_arr / (2 * F)) * Vm * 60 * 1000   # mL/min
+    tasa_real = tasa_arr                                          # mL/min
+
     nf_arr = np.where(tasa_teo > 0, tasa_real / tasa_teo, 0.0)
     nf_arr = np.clip(nf_arr, 0.0, 1.0)
     return float(nf_arr.mean()), nf_arr, tasa_teo, tasa_real, Vm
@@ -140,17 +145,19 @@ def calcular_produccion(modelo, data_limpia, n_celdas, T, P):
     I    = data_limpia["corriente"].values.astype(float)
     V    = data_limpia["voltaje"].values.astype(float)
     tasa = data_limpia["tasa"].values.astype(float)
+    h2     = 0.0
+    o2     = 0.0
+    ef_far = 0.0   # inicializado aquí para evitar UnboundLocalError si un bloque interno falla
 
-    potencia  = float(np.mean(V * I))
-    V_mean    = V.mean()
-    ef_volt   = min((V_TN / V_mean) * 100, 100) if V_mean > 0 else 0.0
-    coefs     = {}
+    potencia = float(np.mean(V * I))
+    V_mean   = V.mean()
+    ef_volt  = min((V_TN / V_mean) * 100, 100) if V_mean > 0 else 0.0
+    coefs    = {}
 
-    print(f"Calculando producción con modelo: {modelo}")
     if modelo == "Regresión lineal":
         b0, b1 = _reg_lineal(I, tasa)
         pred   = b0 + b1 * I
-        h2     = max(pred.mean() , 0.0)
+        h2     = max(float(pred.mean()), 0.0)
         o2     = h2 / 2
         err, acc, err_m, acc_m = _accuracy(pred, tasa)
         ef_far = acc_m * 100
@@ -160,44 +167,70 @@ def calcular_produccion(modelo, data_limpia, n_celdas, T, P):
     elif modelo == "Modelo de superficie":
         beta, X = _modelo_superficie(V, I, tasa)
         pred    = X @ beta
-        h2      = max(pred.mean() , 0.0)
+        h2      = max(float(pred.mean()), 0.0)
         o2      = h2 / 2
         err, acc, err_m, acc_m = _accuracy(pred, tasa)
         ef_far  = acc_m * 100
         coefs   = {"β": beta, "X": X, "pred": pred,
                    "err": err, "acc": acc, "err_m": err_m, "acc_m": acc_m}
 
-    
     elif modelo == "Ley de Faraday":
         nf, nf_arr, tasa_teo, tasa_real, Vm = _nf_faraday(I, tasa, n_celdas, T, P)
+        # tasa_teo y tasa_real ya están en mL/min → h2_arr y o2_arr en mL/min
         h2_arr = n_celdas * nf_arr * (I / (2 * F)) * Vm * 60 * 1000   # mL/min
         o2_arr = n_celdas * nf_arr * (I / (4 * F)) * Vm * 60 * 1000   # mL/min
+
+        # CORRECCIÓN: asignar h2 y o2 para que consumo se calcule correctamente
+        h2 = float(np.mean(h2_arr))
+        o2 = float(np.mean(o2_arr))
+
         err, acc, err_m, acc_m = _accuracy(h2_arr, tasa_real)
         ef_far = acc_m * 100          # eficiencia del modelo (accuracy)
-        coefs  = {"nf": nf, "nf_arr": nf_arr, "Vm": Vm,
-                "tasa_teo": tasa_teo, "tasa_real": tasa_real,
-                "h2_arr": h2_arr, "o2_arr": o2_arr,
-                "ef_nf_pct": nf_arr * 100 ,    # ← eficiencia faradaica en %
-                "ef_modelo": ef_far}       # ← eficiencia del modelo
+
+
+        ef_far_global = float(np.mean(nf_arr)) * 100
+
+        coefs = {
+            "nf":          nf,
+            "nf_arr":      nf_arr,
+            "Vm":          Vm,
+            "tasa_teo":    tasa_teo,    # mL/min
+            "tasa_real":   tasa_real,   # mL/min
+            "h2_arr":      h2_arr,      # mL/min
+            "o2_arr":      o2_arr,      # mL/min
+            "ef_nf_pct":   nf_arr * 100,
+            "ef_modelo":   ef_far,
+            "ef_far_global": ef_far_global,
+        }
+
+        ef_far = ef_far_global
+
     else:
         h2 = o2 = ef_far = 0.0
 
-    consumo    = (potencia / 1000) / (h2 * 60 / 1000) if h2 > 0 else None
+    # Asegurar que h2, o2 y ef_far sean siempre escalares Python finitos
+    h2     = float(h2)     if (h2 is not None and np.isfinite(h2))     else 0.0
+    o2     = float(o2)     if (o2 is not None and np.isfinite(o2))     else 0.0
+    ef_far = float(ef_far) if (ef_far is not None and np.isfinite(ef_far)) else 0.0
+
+    consumo    = (potencia / 1000) / (h2 * 60 / 1000) if h2 > 1e-10 else None
     eficiencia = (ef_far * ef_volt) / 100
+
     return h2, o2, potencia, consumo, eficiencia, ef_far, ef_volt, coefs
 
 
 def h2_por_punto(modelo, I_val, V_val, coefs, n_celdas, T, P):
     F = 96485
     if modelo == "Regresión lineal":
-        return max((coefs["β₀"] + coefs["β₁"] * I_val) , 0.0)
+        return max((coefs["β₀"] + coefs["β₁"] * I_val), 0.0)
     elif modelo == "Modelo de superficie":
         x = np.array([1, V_val, I_val, V_val * I_val, V_val**2, I_val**2])
-        return max(float(x @ coefs["β"]) , 0.0)
+        return max(float(x @ coefs["β"]), 0.0)
     elif modelo == "Ley de Faraday":
         nf = coefs.get("nf", 0.0)
         Vm = coefs.get("Vm", 0.0)
-        return n_celdas * nf * (I_val / (2 * F)) * Vm * 60
+        # Vm en L/mol → resultado en mL/min
+        return n_celdas * nf * (I_val / (2 * F)) * Vm * 60 * 1000
     return 0.0
 
 
@@ -206,17 +239,17 @@ def modelo_pem_base(I, E_rev, A, I_0, R_ohm):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HELPERS: ecuaciones en LaTeX — decimales con punto, × con \cdot, 2 decimales
+# HELPERS: ecuaciones en LaTeX
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _fmt(val):
-    """Formatea un número con 2 decimales usando punto como separador."""
     return f"{val:.2f}"
 
+
 def _fmt_sci(val):
-    """Notación científica con 2 decimales para I₀."""
     base, exp_str = f"{val:.2e}".split('e')
     return f"{float(base):.2f} \\times 10^{{{int(exp_str)}}}"
+
 
 def latex_regresion_lineal(coefs):
     b0 = coefs["β₀"]
@@ -227,16 +260,20 @@ def latex_regresion_lineal(coefs):
         f"{_fmt(b0)} {signo} {_fmt(abs(b1))} \\cdot I"
     )
 
+
 def latex_superficie(coefs):
     beta = coefs["β"]
     b0, b1, b2, b3, b4, b5 = beta
+
     def s(v, var):
         sign = "+" if v >= 0 else "-"
         return f"{sign} {_fmt(abs(v))} \\cdot {var}"
+
     return (
         r"\text{Producción}_{H_2} \, \text{(mL/min)} = " +
         f"{_fmt(b0)} {s(b1,'V')} {s(b2,'I')} {s(b3,'V \\cdot I')} {s(b4,'V^2')} {s(b5,'I^2')}"
     )
+
 
 def latex_faraday(coefs, n_celdas, T, P):
     F = 96485
@@ -244,21 +281,21 @@ def latex_faraday(coefs, n_celdas, T, P):
     Vm = coefs["Vm"]
     return (
         r"\text{Producción}_{H_2} \, \text{(mL/min)} = " +
-        f"{n_celdas} \\cdot {_fmt(nf)} \\cdot \\frac{{I}}{{2 \\cdot {F}}} \\cdot {_fmt(Vm)} \\cdot 60"
+        f"{n_celdas} \\cdot {_fmt(nf)} \\cdot \\frac{{I}}{{2 \\cdot {F}}} \\cdot {_fmt(Vm)} \\cdot 60 \\cdot 1000"
     )
+
 
 def latex_faraday_simplificada(coefs, n_celdas):
     F = 96485
     nf = coefs["nf"]
     Vm = coefs["Vm"]
-
-    #constante agrupada
-    K = n_celdas * nf * Vm * 60 / (2 * F)
-
+    # Vm en L/mol → ×1000 para mL/min
+    K = n_celdas * nf * Vm * 60 * 1000 / (2 * F)
     return (
         r"\text{Producción}_{H_2} \, \text{(mL/min)} = " +
         f"{_fmt(K)} \\cdot I"
     )
+
 
 def latex_pem(popt):
     E_rev, A, I_0, R_ohm = popt
@@ -273,9 +310,6 @@ def latex_pem(popt):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far):
-    """Muestra los coeficientes del modelo + bloque de eficiencia con mensaje contextual."""
-
-    # ── Coeficientes ─────────────────────────────────────────────────────────
     st.markdown('<div class="seccion-titulo">Coeficientes del modelo de producción</div>', unsafe_allow_html=True)
 
     if modelo_actual == "Regresión lineal":
@@ -294,43 +328,48 @@ def mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far):
     elif modelo_actual == "Ley de Faraday":
         nf = coefs["nf"]
         Vm = coefs["Vm"]
-        # Parámetro ajustado
         st.markdown("**Parámetro ajustado a los datos:**")
         c1, c2 = st.columns(2)
-        c1.metric("Eficiencia faradaica η_F", f"{coefs['ef_nf_pct']:.2f} %")
-        c2.metric("Volumen molar del gas, Vm (L/mol)", f"{_fmt(Vm)}")
-        # Constantes fijas del modelo
+        c1.metric("Eficiencia faradaica", f"{float(np.mean(coefs['ef_nf_pct'])):.2f} %")
+        c2.metric("Volumen molar del gas, Vm (mL/mol)", f"{Vm * 1000:.2f}")
         st.markdown("**Constantes físicas fijas:**")
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Constante de Faraday, F (C/mol)", "96,485")
-        k2.metric("Constante de gas ideal, R (L·atm/mol·K)", "0.08314")
+        k1.metric("Constante de Faraday, F (C/mol)", "96485")
+        k2.metric("Constante de gas ideal, R (J/mol·K)", "0.08314")
         k3.metric("Electrones por mol H₂ (n)", "2")
         k4.metric("Electrones por mol O₂ (n)", "4")
 
-    # ── Eficiencia + mensaje contextual ──────────────────────────────────────
     st.markdown('<div class="seccion-titulo">Eficiencia del modelo de producción</div>', unsafe_allow_html=True)
 
+    # Para Faraday, mostrar tanto la eficiencia faradaica como la del modelo
     if modelo_actual == "Ley de Faraday":
-        ef_far = coefs["ef_modelo"]
+        ef_modelo = coefs["ef_modelo"]
+        ef_far_global = coefs["ef_far_global"]
+        col_ef2, col_ef3 = st.columns(2)
+        #col_ef1.metric("Eficiencia faradaica (%)", f"{_fmt(ef_far_global)} %")
+        col_ef2.metric("Eficiencia del modelo (%)", f"{_fmt(ef_modelo)} %")
+        ef_mostrar = ef_modelo
+    else:
+        col_ef1, col_ef2 = st.columns([1, 2])
+        col_ef1.metric("Eficiencia del modelo (%)", f"{_fmt(ef_far)} %")
+        ef_mostrar = ef_far
+        col_ef2 = col_ef2  # alias para el mensaje
 
-    col_ef1, col_ef2 = st.columns([1, 2])
-    col_ef1.metric("Eficiencia del modelo (%)", f"{_fmt(ef_far)} %")
-
-    if ef_far >= 85:
+    if ef_mostrar >= 85:
         clase = "ef-alta"
         icono = "✅"
         titulo = "Eficiencia óptima"
         mensaje = (
-            f"La eficiencia del modelo es <strong>{_fmt(ef_far)} %</strong>, lo que indica un excelente "
+            f"La eficiencia del modelo es <strong>{_fmt(ef_mostrar)} %</strong>, lo que indica un excelente "
             "acuerdo entre las predicciones y los datos experimentales. "
             "El electrolizador opera en condiciones cercanas al ideal teórico."
         )
-    elif ef_far >= 60:
+    elif ef_mostrar >= 60:
         clase = "ef-media"
         icono = "⚠️"
         titulo = "Eficiencia moderada"
         mensaje = (
-            f"La eficiencia del modelo es <strong>{_fmt(ef_far)} %</strong>. Existe un ajuste aceptable, "
+            f"La eficiencia del modelo es <strong>{_fmt(ef_mostrar)} %</strong>. Existe un ajuste aceptable, "
             "pero hay margen de mejora. Revisa la distribución de los datos experimentales "
             "y considera ampliar el rango de corrientes medidas."
         )
@@ -339,24 +378,33 @@ def mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far):
         icono = "❌"
         titulo = "Eficiencia baja"
         mensaje = (
-            f"La eficiencia del modelo es <strong>{_fmt(ef_far)} %</strong>, lo que sugiere que el modelo "
+            f"La eficiencia del modelo es <strong>{_fmt(ef_mostrar)} %</strong>, lo que sugiere que el modelo "
             "no captura bien el comportamiento del electrolizador. "
             "Verifica la calidad de los datos, descarta valores atípicos o prueba un modelo diferente."
         )
 
-    col_ef2.markdown(
-        f'<div class="ef-card {clase}">'
-        f'<strong>{icono} {titulo}:</strong> {mensaje}'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    if modelo_actual == "Ley de Faraday":
+        col_ef3.markdown(
+            f'<div class="ef-card {clase}">'
+            f'<strong>{icono} {titulo}:</strong> {mensaje}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        col_ef2.markdown(
+            f'<div class="ef-card {clase}">'
+            f'<strong>{icono} {titulo}:</strong> {mensaje}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 try:
-    st.sidebar.image("UCO.png", width=200, use_column_width=True)
+    # CORRECCIÓN: use_column_width deprecado → use_container_width
+    st.sidebar.image("UCO.png", use_container_width=True)
 except Exception:
     pass
 
@@ -409,6 +457,18 @@ if st.session_state.paso_actual == 1:
         },
     )
 
+    # CORRECCIÓN: ingreso_datos() movida aquí como función local para acceder
+    # a las variables 'data', 'celdas', 'temperatura', 'presion' del scope correcto.
+    def ingreso_datos():
+        if len(data.dropna()) < 15:
+            st.warning("Ingresa al menos 15 mediciones válidas para continuar.")
+        else:
+            st.session_state.celdas = celdas
+            st.session_state.temperatura = temperatura
+            st.session_state.presion = presion
+            st.session_state.data = data.copy()
+            st.session_state.paso_actual += 1
+
     col1, col2, col3 = st.columns(3)
     col3.button("Guardar y Continuar ▶", on_click=ingreso_datos, type="primary")
 
@@ -451,7 +511,6 @@ elif st.session_state.paso_actual == 2:
         c3.metric("I. de Intercambio (A)",  f"{I_0_opt:.2e}")
         c4.metric("R. Óhmica (Ω)",          f"{_fmt(R_ohm_opt)}")
 
-        # R² en verde (igual que paso 3 y 4)
         st.markdown(
             f'<div class="r2-verde">✅ <strong>Coeficiente de determinación (R²):</strong> {_fmt(r2)}</div>',
             unsafe_allow_html=True,
@@ -473,7 +532,8 @@ elif st.session_state.paso_actual == 2:
         fig.update_layout(xaxis_title="Corriente (A)", yaxis_title="Voltaje (V)",
                           margin=dict(l=0, r=0, t=20, b=0),
                           legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
-        st.plotly_chart(fig, width='stretch')
+        # CORRECCIÓN: use_container_width en lugar de width='stretch' (deprecado)
+        st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
         st.error("❌ El algoritmo no logró converger.")
@@ -493,7 +553,6 @@ elif st.session_state.paso_actual == 3:
     st.header("Paso 3: Simulación de generación de H₂ y O₂")
     st.write("Selecciona el modelo de producción. Los resultados se calculan a partir de los datos experimentales del Paso 1.")
 
-    # Opciones del selectbox — se conserva la selección previa
     opciones_modelo = ["-- Seleccionar --", "Regresión lineal", "Modelo de superficie", "Ley de Faraday"]
     idx_previo = (
         opciones_modelo.index(st.session_state.modelo_seleccionado)
@@ -507,22 +566,15 @@ elif st.session_state.paso_actual == 3:
         index=idx_previo,
     )
 
-    
-    # Guardar selección inmediatamente en session_state
     if modelo != "-- Seleccionar --":
         st.session_state.modelo_seleccionado = modelo
-        print(f"Modelo seleccionado 1")
     else:
         st.session_state.modelo_seleccionado = None
-        print(f"Modelo seleccionado 2")
 
     if not st.session_state.modelo_seleccionado:
         st.info("👆 Selecciona un modelo para ver los resultados.")
-        print(f"Modelo seleccionado 3")
-
 
     else:
-        print(f"Modelo seleccionado def")
         modelo_actual = st.session_state.modelo_seleccionado
         data_limpia   = st.session_state.data.dropna()
         data_limpia   = data_limpia[(data_limpia["corriente"] >= 0) & (data_limpia["voltaje"] >= 0)]
@@ -544,10 +596,8 @@ elif st.session_state.paso_actual == 3:
 
         st.divider()
 
-        # ── Coeficientes + eficiencia del modelo ──────────────────────────────
         mostrar_eficiencia_modelo(modelo_actual, coefs, ef_far)
 
-        # ── Ecuación del modelo ────────────────────────────────────────────────
         st.markdown('<div class="seccion-titulo">Ecuación del modelo de producción</div>', unsafe_allow_html=True)
 
         if modelo_actual == "Regresión lineal":
@@ -559,13 +609,12 @@ elif st.session_state.paso_actual == 3:
 
         st.divider()
 
-        # ── Gráficas según modelo ──────────────────────────────────────────────
         st.markdown('<div class="seccion-titulo">Visualización del modelo de producción</div>', unsafe_allow_html=True)
 
-        idx_s   = np.argsort(I_arr)
-        I_s     = I_arr[idx_s]
-        V_s     = V_arr[idx_s]
-        tasa_s  = tasa_arr[idx_s]
+        idx_s  = np.argsort(I_arr)
+        I_s    = I_arr[idx_s]
+        V_s    = V_arr[idx_s]
+        tasa_s = tasa_arr[idx_s]
 
         # ── SUPERFICIE: gráfica 3D ─────────────────────────────────────────────
         if modelo_actual == "Modelo de superficie":
@@ -598,16 +647,16 @@ elif st.session_state.paso_actual == 3:
                 margin=dict(l=0, r=0, t=20, b=0),
                 legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
             )
-            st.plotly_chart(fig3d, width='stretch')
+            # CORRECCIÓN: use_container_width en lugar de width='stretch'
+            st.plotly_chart(fig3d, use_container_width=True)
 
-        # ── REGRESIÓN LINEAL: ajuste + residuos ───────────────────────────────
         elif modelo_actual == "Regresión lineal":
             b0, b1 = coefs["β₀"], coefs["β₁"]
-            I_lin     = np.linspace(I_arr.min() * 0.95, I_arr.max() * 1.05, 200)
-            pred_lin  = b0 + b1 * I_lin
-            pred_pts  = b0 + b1 * I_s
-            residuos  = tasa_s - pred_pts
-            std_res   = np.std(residuos)
+            I_lin    = np.linspace(I_arr.min() * 0.95, I_arr.max() * 1.05, 200)
+            pred_lin = b0 + b1 * I_lin
+            pred_pts = b0 + b1 * I_s
+            residuos = tasa_s - pred_pts
+            std_res  = np.std(residuos)
 
             fig_rl = make_subplots(
                 rows=1, cols=2,
@@ -640,19 +689,20 @@ elif st.session_state.paso_actual == 3:
             fig_rl.update_yaxes(title_text="Producción H₂ (mL/min)", row=1, col=1)
             fig_rl.update_yaxes(title_text="Residuo (mL/min)", row=1, col=2)
             fig_rl.update_layout(margin=dict(l=0, r=0, t=40, b=0))
-            st.plotly_chart(fig_rl, width='stretch')
+            # CORRECCIÓN: use_container_width en lugar de width='stretch'
+            st.plotly_chart(fig_rl, use_container_width=True)
 
         # ── LEY DE FARADAY: múltiples gráficas con selector ──────────────────
         elif modelo_actual == "Ley de Faraday":
-            F_const   = 96485
-            nf_mean   = coefs["nf"]
+            F_const    = 96485
+            nf_mean    = coefs["nf"]
             nf_arr_exp = coefs["nf_arr"]
-            Vm        = coefs["Vm"]
-            n_cel     = st.session_state.celdas
-            tasa_teo  = coefs["tasa_teo"]   # L/min
-            tasa_real = coefs["tasa_real"]   # L/min
-            h2_arr    = coefs["h2_arr"]      # L/min
-            o2_arr    = coefs["o2_arr"]      # L/min
+            Vm         = coefs["Vm"]
+            n_cel      = st.session_state.celdas
+            tasa_teo   = coefs["tasa_teo"]    # mL/min
+            tasa_real  = coefs["tasa_real"]   # mL/min
+            h2_arr     = coefs["h2_arr"]      # mL/min
+            o2_arr     = coefs["o2_arr"]      # mL/min
 
             tipo_graf = st.radio(
                 "Selecciona la visualización:",
@@ -666,9 +716,10 @@ elif st.session_state.paso_actual == 3:
 
             # 1. Producción H₂ vs Corriente + banda de ±5 %
             if tipo_graf == "Producción H₂ vs Corriente":
-                I_lin   = np.linspace(I_s.min() * 0.9, I_s.max() * 1.1, 200)
-                h2_lin  = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60   # mL/min
-                delta   = 0.05 * h2_lin
+                I_lin  = np.linspace(I_s.min() * 0.9, I_s.max() * 1.1, 200)
+                # CORRECCIÓN: Vm en L/mol → ×1000 para mL/min
+                h2_lin = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60 * 1000
+                delta  = 0.05 * h2_lin
 
                 fig_f1 = go.Figure()
                 fig_f1.add_trace(go.Scatter(
@@ -682,7 +733,7 @@ elif st.session_state.paso_actual == 3:
                     name='Modelo Faraday', line=dict(color='royalblue', width=2.5),
                 ))
                 fig_f1.add_trace(go.Scatter(
-                    x=I_s, y=tasa_real * 1000, mode='markers',
+                    x=I_s, y=tasa_real[idx_s], mode='markers',
                     name='Datos experimentales',
                     marker=dict(color='darkorange', size=8, symbol='circle'),
                 ))
@@ -692,41 +743,40 @@ elif st.session_state.paso_actual == 3:
                     margin=dict(l=0, r=0, t=20, b=0),
                     legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                 )
-                st.plotly_chart(fig_f1, width='stretch')
+                # CORRECCIÓN: use_container_width en lugar de width='stretch'
+                st.plotly_chart(fig_f1, use_container_width=True)
 
             # 2. Tasa teórica vs Tasa experimental (paridad)
             elif tipo_graf == "Tasa teórica vs Tasa experimental":
-                teo_ml  = tasa_teo * 1000
-                real_ml = tasa_real * 1000
+                teo_ml  = tasa_teo
+                real_ml = tasa_real
                 lim_min = min(teo_ml.min(), real_ml.min()) * 0.95
                 lim_max = max(teo_ml.max(), real_ml.max()) * 1.05
 
-                fig_f2 = make_subplots(
-                    rows=1, cols=1,
-                    subplot_titles=("Gráfica de paridad (teórico vs real)")
-                )
-                # Panel izquierdo: paridad
+                fig_f2 = go.Figure()
                 fig_f2.add_trace(go.Scatter(
                     x=[lim_min, lim_max], y=[lim_min, lim_max],
                     mode='lines', name='Paridad (y = x)',
                     line=dict(color='gray', dash='dash'),
-                ), row=1, col=1)
+                ))
                 fig_f2.add_trace(go.Scatter(
                     x=teo_ml, y=real_ml, mode='markers',
                     name='Puntos experimentales',
                     marker=dict(color='royalblue', size=8),
-                ), row=1, col=1)
-
-                fig_f2.update_xaxes(title_text="Tasa teórica (mL/min)", row=1, col=1)
-                fig_f2.update_yaxes(title_text="Tasa real (mL/min)", row=1, col=1)
-                fig_f2.update_layout(margin=dict(l=0, r=0, t=40, b=0))
-                st.plotly_chart(fig_f2, width='stretch')
+                ))
+                fig_f2.update_layout(
+                    xaxis_title="Tasa teórica (mL/min)",
+                    yaxis_title="Tasa real (mL/min)",
+                    margin=dict(l=0, r=0, t=40, b=0),
+                )
+                # CORRECCIÓN: use_container_width en lugar de width='stretch'
+                st.plotly_chart(fig_f2, use_container_width=True)
 
             # 3. H₂ y O₂ vs Corriente (doble eje)
             elif tipo_graf == "Producción H₂ y O₂ vs Corriente":
-                I_lin   = np.linspace(I_s.min() * 0.9, I_s.max() * 1.1, 200)
-                h2_lin  = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60 
-                o2_lin  = n_cel * nf_mean * (I_lin / (4 * F_const)) * Vm * 60 
+                I_lin  = np.linspace(I_s.min() * 0.9, I_s.max() * 1.1, 200)
+                h2_lin = n_cel * nf_mean * (I_lin / (2 * F_const)) * Vm * 60 * 1000
+                o2_lin = n_cel * nf_mean * (I_lin / (4 * F_const)) * Vm * 60 * 1000
 
                 fig_f4 = make_subplots(specs=[[{"secondary_y": True}]])
                 fig_f4.add_trace(go.Scatter(
@@ -734,7 +784,7 @@ elif st.session_state.paso_actual == 3:
                     name='H₂ — modelo', line=dict(color='royalblue', width=2.5),
                 ), secondary_y=False)
                 fig_f4.add_trace(go.Scatter(
-                    x=I_s, y=tasa_real[idx_s] * 1000, mode='markers',
+                    x=I_s, y=tasa_real[idx_s], mode='markers',
                     name='H₂ — experimental',
                     marker=dict(color='royalblue', size=8, symbol='circle-open'),
                 ), secondary_y=False)
@@ -743,7 +793,7 @@ elif st.session_state.paso_actual == 3:
                     name='O₂ — modelo', line=dict(color='#e74c3c', width=2.5, dash='dot'),
                 ), secondary_y=True)
                 fig_f4.add_trace(go.Scatter(
-                    x=I_s, y=o2_arr[idx_s] * 1000, mode='markers',
+                    x=I_s, y=o2_arr[idx_s], mode='markers',
                     name='O₂ — experimental',
                     marker=dict(color='#e74c3c', size=8, symbol='circle-open'),
                 ), secondary_y=True)
@@ -754,7 +804,8 @@ elif st.session_state.paso_actual == 3:
                     margin=dict(l=0, r=0, t=20, b=0),
                     legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                 )
-                st.plotly_chart(fig_f4, width='stretch')
+                # CORRECCIÓN: use_container_width en lugar de width='stretch'
+                st.plotly_chart(fig_f4, use_container_width=True)
 
     st.divider()
     c1, c2, c3 = st.columns(3)
@@ -784,7 +835,6 @@ elif st.session_state.paso_actual == 4:
     ef_far        = st.session_state.get("ef_faradaica", 0.0)
     ef_volt       = st.session_state.get("ef_voltaica",  0.0)
 
-    # ── Ecuaciones obtenidas ────────────────────────────────────────────────────
     st.markdown('<div class="seccion-titulo">Ecuación obtenida en el Paso 2 — Modelo cinético (Butler-Volmer / Tafel)</div>', unsafe_allow_html=True)
 
     if popt is not None:
@@ -797,16 +847,13 @@ elif st.session_state.paso_actual == 4:
 
     if modelo_actual == "Regresión lineal" and coefs:
         st.latex(r"\Large " + latex_regresion_lineal(coefs))
-
     elif modelo_actual == "Modelo de superficie" and coefs:
-        st.latex(r"\Large " + latex_superficie(coefs))
-
+        st.latex(r"\normalsize " + latex_superficie(coefs))
     elif modelo_actual == "Ley de Faraday" and coefs:
         st.latex(r"\Large " + latex_faraday_simplificada(coefs, st.session_state.celdas))
 
     st.divider()
 
-    # ── Calculadora interactiva ─────────────────────────────────────────────────
     st.markdown('<div class="seccion-titulo">Calculadora de punto de operación</div>', unsafe_allow_html=True)
     st.write(
         "Ingresa un valor de **corriente** o de **voltaje** para predecir el otro y "
@@ -820,6 +867,7 @@ elif st.session_state.paso_actual == 4:
         horizontal=True,
     )
 
+    h2_calc = 0.0
     col_inp, col_out = st.columns(2)
 
     if modo_calc.startswith("Corriente"):
